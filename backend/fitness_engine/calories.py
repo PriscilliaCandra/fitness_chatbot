@@ -70,13 +70,25 @@ def calculate_macros(calories: float, user) -> dict:
     carbs_g = remaining_cal / 4
 
     return {
-        "protein_g": round(protein_g),
-        "fat_g": round(fat_g),
-        "carbs_g": round(carbs_g)
+        "protein": round(protein_g),
+        "fat": round(fat_g),
+        "carbs": round(carbs_g)
     }
 
 
 def calculate_calories(user) -> dict:
+    if user.age <= 0 or user.weight_kg <= 0 or user.height_cm <= 0:
+        raise ValueError("Age, weight, and height must be positive")
+    
+    if user.age < 15 or user.age > 80:
+        raise ValueError("Age must be between 15 and 80 for accurate calculation")
+    
+    if user.weight_kg < 30 or user.weight_kg > 200:
+        raise ValueError("Weight must be between 30kg and 200kg")
+    
+    if user.height_cm < 100 or user.height_cm > 250:
+        raise ValueError("Height must be between 100cm and 250cm")
+    
     bmr = calculate_bmr(user)
     factor = activity_factor(user.active_level)
     tdee = bmr * factor
@@ -86,10 +98,19 @@ def calculate_calories(user) -> dict:
 
     adjusted = adaptive_surplus_deficit(tdee, bmi, user.goal)
     adjusted = int(round(adjusted))
-
+    
+    # Safety bounds untuk kesehatan
+    min_calories = 1200 if user.gender.lower() in ("female", "f") else 1500
+    max_calories = 4000
+    
+    adjusted = max(min_calories, min(adjusted, max_calories))
+    
     macros = calculate_macros(adjusted, user)
 
     return {
         "calories": adjusted,
-        "macros": macros
+        "macros": macros,
+        "bmr": round(bmr),
+        "tdee": round(tdee),
+        "bmi": round(bmi, 1)
     }

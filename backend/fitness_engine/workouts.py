@@ -15,7 +15,7 @@ def generate_workouts(user) -> List[Dict]:
         ],
         "leg": [
             "Barbell Squat", "Romanian Deadlift", "Lunges",
-            "Leg Press", "Leg Extention", "Calf Raise"
+            "Leg Press", "Leg Extension", "Calf Raise"
         ],
         "core": [
             "Seated Crunch", "Russian Twist", "Reverse Crunch",
