@@ -1,7 +1,7 @@
 from .calories import calculate_calories
 from .workouts import generate_workouts
 from .diet import generate_diet
-from .progress import predict_progress
+from .progress import predict_progress, calculate_time_to_target
 from .portions import estimate_portions
 from .recipes import generate_meal_recipe, generate_recipe
 from .grocery import generate_grocery_list
@@ -11,7 +11,12 @@ from typing import List, Dict
 def generate_calories_for_user(user) -> dict:
     return calculate_calories(user)
 
-def generate_full_plan(user: UserData, weeks_progress: int = 8) -> Dict:
+def generate_full_plan(user: UserData, weeks_progress: int = None) -> Dict:
+    if not weeks_progress:
+        time_estimate = calculate_time_to_target(user)
+        weeks_progress = min(time_estimate["weeks_to_target"], 16)  # Max 16 weeks display
+        weeks_progress = max(weeks_progress, 8)
+        
     # Calculate nutrition targets
     cal_data = calculate_calories(user)
     calories_target = cal_data["calories"]
@@ -19,6 +24,19 @@ def generate_full_plan(user: UserData, weeks_progress: int = 8) -> Dict:
     
     # Generate workout plan
     workout_plan = generate_workouts(user)
+    
+    if workout_plan and len(workout_plan) > 0:
+        first_day = workout_plan[0]
+        print(f"Day 1 type: {first_day.get('type')}")
+        print(f"Workout count: {len(first_day.get('workout', []))}")
+        if first_day.get('workout'):
+            first_exercise = first_day['workout'][0]
+            print(f"First exercise: {first_exercise}")
+            print(f"Exercise type: {type(first_exercise)}")
+            if isinstance(first_exercise, dict):
+                print(f"Has sets: {'sets' in first_exercise}")
+                print(f"Has reps: {'reps' in first_exercise}")
+                print(f"Has rest: {'rest' in first_exercise}")
     
     # Generate basic diet plan structure
     diet_weekly = generate_diet(user, calories_target, macros_target)
@@ -33,13 +51,16 @@ def generate_full_plan(user: UserData, weeks_progress: int = 8) -> Dict:
     
     # Generate progress prediction
     progress_prediction = predict_progress(user, weeks=weeks_progress)
+    time_estimate = calculate_time_to_target(user)
     
     return {
         "user_info": {
             "name": user.name,
             "goal": user.goal,
             "vegan": user.vegan,
-            "active_level": user.active_level
+            "active_level": user.active_level,
+            "current_weight": user.weight_kg,
+            "target_weight": user.target_weight if user.target_weight else calculate_target_weight(user)
         },
         "nutrition": {
             "calories_target": calories_target,
@@ -48,76 +69,15 @@ def generate_full_plan(user: UserData, weeks_progress: int = 8) -> Dict:
         "workout_plan": workout_plan,
         "diet_plan": diet_plan_with_recipes, 
         "grocery_list": grocery_list,
-        "progress_prediction": progress_prediction
+        "progress_prediction": progress_prediction,
+        "time_estimate": time_estimate
     }
-
-# def add_recipes_and_portions_to_diet(
-#     diet_weekly: List[Dict], 
-#     macros_target: Dict, 
-#     goal: str
-# ) -> List[Dict]:
-    
-#     enhanced_diet = []
-    
-#     for day in diet_weekly:
-#         enhanced_day = day.copy()
-#         enhanced_day["portions"] = {}
-#         enhanced_day["recipes"] = {}
-#         enhanced_day["meal_details"] = {}
-        
-#         for meal_type, meal_name in day["meals"].items():
-#             # Get ingredients untuk meal ini
-#             ingredients = day["ingredients"][meal_type]
-            
-#             # Validasi ingredients
-#             if not ingredients or not isinstance(ingredients, list):
-#                 print(f"Warning: No ingredients for {meal_type}: {meal_name}")
-#                 ingredients = []
-            
-#             # Estimate portions
-#             portions = estimate_portions(ingredients, macros_target, goal)
-            
-#             # Validasi portions
-#             if not portions:
-#                 print(f"Warning: No portions generated for {meal_type}: {meal_name}")
-#                 portions = []
-            
-#             # Generate recipes
-#             try:
-#                 meal_recipe = generate_meal_recipe(meal_name, por)
-                
-#                 # Generate individual food recipes dengan validasi
-#                 food_recipes = []
-#                 for p in portions:
-#                     if isinstance(p, dict) and "food" in p and "grams" in p:
-#                         recipe = generate_recipe(p["food"], p["grams"])
-#                         food_recipes.append(recipe)
-                
-#                 # Add to enhanced day
-#                 enhanced_day["portions"][meal_type] = portions
-#                 enhanced_day["recipes"][meal_type] = food_recipes
-#                 enhanced_day["meal_details"][meal_type] = meal_recipe
-                
-#             except Exception as e:
-#                 print(f"Error generating recipe for {meal_type}: {e}")
-#                 # Fallback
-#                 enhanced_day["portions"][meal_type] = portions
-#                 enhanced_day["recipes"][meal_type] = []
-#                 enhanced_day["meal_details"][meal_type] = {
-#                     "meal": meal_name,
-#                     "error": "Failed to generate recipe"
-#                 }
-        
-#         enhanced_diet.append(enhanced_day)
-    
-#     return enhanced_diet
 
 def add_recipes_and_portions_to_diet(
     diet_weekly: List[Dict], 
     macros_target: Dict, 
     goal: str
 ) -> List[Dict]:
-    """Enhanced dengan validasi data dan debugging DETAIL"""
     enhanced_diet = []
     
     for day in diet_weekly:
@@ -128,34 +88,32 @@ def add_recipes_and_portions_to_diet(
         enhanced_day["meal_details"] = {}
         
         for meal_type, meal_name in day["meals"].items():
-            print(f"🔍 Processing {meal_type}")
-            print(f"   Meal name: '{meal_name}'")
-            print(f"   Meal name type: {type(meal_name)}")
+            print(f"Processing {meal_type}")
+            print(f"Meal name: '{meal_name}'")
+            print(f"Meal name type: {type(meal_name)}")
             
-            # ✅ DEBUG: Check apa yang ada di day
-            print(f"   Day keys: {list(day.keys())}")
+            print(f"Day keys: {list(day.keys())}")
             
-            # ✅ PASTIKAN ambil dari ingredients
             ingredients = day.get("ingredients", {}).get(meal_type, [])
-            print(f"   Ingredients: {ingredients}")
-            print(f"   Ingredients type: {type(ingredients)}")
+            print(f"Ingredients: {ingredients}")
+            print(f"Ingredients type: {type(ingredients)}")
             
             # Validasi CRITICAL
             if not ingredients:
-                print(f"   ❌ CRITICAL: No ingredients for {meal_type}")
+                print(f"CRITICAL: No ingredients for {meal_type}")
                 ingredients = []
             elif not isinstance(ingredients, list):
-                print(f"   ❌ CRITICAL: Ingredients is not a list: {type(ingredients)}")
+                print(f"CRITICAL: Ingredients is not a list: {type(ingredients)}")
                 ingredients = []
             elif ingredients and isinstance(ingredients[0], str) and len(ingredients[0]) == 1:
-                print(f"   ❌ CRITICAL: Ingredients are single characters!")
+                print(f"CRITICAL: Ingredients are single characters!")
                 ingredients = []
             
             # DEBUG sebelum panggil estimate_portions
-            print(f"   📤 Calling estimate_portions with:")
-            print(f"      - ingredients: {ingredients}")
-            print(f"      - ingredients count: {len(ingredients)}")
-            print(f"      - first ingredient: {ingredients[0] if ingredients else 'None'}")
+            print(f"Calling estimate_portions with:")
+            print(f"- ingredients: {ingredients}")
+            print(f"- ingredients count: {len(ingredients)}")
+            print(f"- first ingredient: {ingredients[0] if ingredients else 'None'}")
             
             # Estimate portions
             portions = estimate_portions(
@@ -164,9 +122,9 @@ def add_recipes_and_portions_to_diet(
                 goal=goal
             )
             
-            print(f"   📥 estimate_portions returned:")
-            print(f"      - portions: {portions}")
-            print(f"      - portions count: {len(portions)}")
+            print(f"estimate_portions returned:")
+            print(f"- portions: {portions}")
+            print(f"- portions count: {len(portions)}")
             if portions:
                 print(f"      - first portion: {portions[0]}")
             
@@ -184,7 +142,7 @@ def add_recipes_and_portions_to_diet(
                 enhanced_day["meal_details"][meal_type] = meal_recipe
                 
             except Exception as e:
-                print(f"   ❌ Error in recipe generation: {e}")
+                print(f"Error in recipe generation: {e}")
                 enhanced_day["portions"][meal_type] = portions
                 enhanced_day["recipes"][meal_type] = []
         

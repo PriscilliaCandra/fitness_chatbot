@@ -9,3 +9,4 @@ class UserData(BaseModel):
     goal: str
     active_level: str    
     vegan: bool = False
+    target_weight: float = None
