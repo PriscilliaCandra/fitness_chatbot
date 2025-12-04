@@ -5,7 +5,7 @@ from models.user_auth import UserRegister, UserLogin
 from auth import create_token, decode_token
 import json
 from models.user_model import UserData
-from fitness_engine.engine import generate_full_plan, generate_meal_plan_only, generate_workout_plan_only  # ✅ IMPORT YANG BENAR
+from fitness_engine.engine import generate_full_plan, generate_meal_plan_only, generate_workout_plan_only, process_chat_message
 
 init_db()
 
@@ -53,7 +53,6 @@ def generate_plan(user: UserData):
         raise HTTPException(400, "Invalid user data")
     
     try:
-        # ✅ GUNAKAN FUNCTION DARI ENGINE.PY
         plan = generate_full_plan(user)
         
         # DEBUG: Print untuk troubleshooting
@@ -89,6 +88,49 @@ def generate_workout_plan(user: UserData):
         return plan
     except Exception as e:
         raise HTTPException(500, f"Workout plan generation failed: {str(e)}")
+    
+@app.post("/chat")
+def chat_with_coach(data: dict):
+
+    try:
+        print("Received chat request:", data)  # Debug
+        
+        # Extract user data dari request
+        user_data = data.get("user", {})
+        
+        # Buat UserData object dari input
+        user = UserData(
+            name=user_data.get("name", ""),
+            age=user_data.get("age", 0),
+            gender=user_data.get("gender", ""),
+            height_cm=user_data.get("height_cm", 0),
+            weight_kg=user_data.get("weight_kg", 0),
+            target_weight=user_data.get("target_weight"),
+            goal=user_data.get("goal", ""),
+            active_level=user_data.get("active_level", ""),
+            vegan=user_data.get("vegan", False)
+        )
+        
+        message = data.get("message", "")
+        context = data.get("context", {})
+        
+        if not message.strip():
+            raise HTTPException(400, "Message is required")
+        
+        # Process chat message menggunakan fungsi dari engine.py
+        response = process_chat_message(user, message, context)
+        
+        print("Chat response generated:", response.get("type", "unknown"))  # Debug
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Chat processing failed: {str(e)}")
 
 @app.post("/save_history")
 def save_history(plan: dict, Authorization: str = Header(None)):
